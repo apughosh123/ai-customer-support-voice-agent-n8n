@@ -1,0 +1,250 @@
+{
+  "name": "Customer Support Voice Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "customer-support-voice-agent",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "id": "d4a87ca1-906f-4a58-8557-88183c0ed9ec",
+      "name": "Webhook: Receive User Request (ElevenLabs)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [0, 112],
+      "webhookId": "REPLACE_WITH_YOUR_OWN_WEBHOOK_ID",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body?.message ?? $json.message ?? \"\" }}",
+        "options": {
+          "systemMessage": "For any customer question about delivery, refunds, orders, or other FAQs, ALWAYS use the \"Knowledgebase Lookup\" tool before answering.\n\nBefore calling the Knowledgebase Lookup tool, classify the customer's question into exactly ONE of these topics:\n\n- Order: Use \"Order\" when the customer asks where their order is, asks about order status, wants to track an order, or asks for an order ID/tracking update.\n- Delivery: Use \"Delivery\" only when the customer asks how long delivery takes, shipping time, delivery time, or when the order will arrive.\n- Refund: Use \"Refund\" when the customer asks about getting a refund, refund eligibility, or returning money.\n\nExamples:\n\"Where is my order?\" → topic = \"Order\"\n\"Can I track my order?\" → topic = \"Order\"\n\"How long does delivery take?\" → topic = \"Delivery\"\n\"When will my order arrive?\" → topic = \"Delivery\"\n\"How can I get a refund?\" → topic = \"Refund\"\n\nThe topic passed to the tool MUST be exactly \"Order\", \"Delivery\", or \"Refund\".\nDo not use \"Delivery\" for questions about order status or tracking. IMPORTANT BOOKING EMAIL RULE:\n\nAfter successfully creating an appointment with \"Calendar: Create Appointment\":\n\n1. If the customer provided an email address, you MUST call \"Gmail Tool: Send Booking Confirmation\".\n2. Use the exact email address provided by the customer in the Gmail Tool \"To\" field.\n3. The confirmation email must include the appointment date, time, duration, and booking details.\n4. Do NOT tell the customer that a confirmation email was sent unless the Gmail Tool was actually called successfully.\n5. If the Gmail Tool fails, tell the customer that the appointment was booked but the email confirmation could not be sent.\n6. The Gmail Tool must be called AFTER the appointment is successfully created.IMPORTANT DATE RULE:\n\nWhen mentioning appointment dates to the customer, always calculate the correct weekday from the actual calendar date.\n\nNever guess the weekday.\n\nThe appointment date and time must match the date and time successfully created in Google Calendar.\n\nUse Bangladesh local time (Asia/Dhaka) when interpreting and describing appointment dates and times.IMPORTANT WEEKDAY RULE:\n\nNever generate a weekday by guessing or relying on memory.\n\nWhen the customer asks for \"tomorrow\", \"today\", or another relative date:\n- First determine the exact calendar date.\n- Then determine the weekday for that exact date.\n- The weekday must mathematically match the calendar date.\n- If you cannot reliably determine the weekday, do not mention a weekday. State only the date and time.\n\nExample:\n2026-09-08 = Tuesday.\nNever call 2026-09-08 Wednesday.",
+          "maxIterations": 10
+        }
+      },
+      "id": "c9599d4b-32f4-499c-bcfd-92a05acde720",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [480, 112]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Webhook: Receive User Request (ElevenLabs)').item.json.body.session_id }}",
+        "contextWindowLength": 10
+      },
+      "id": "40a981d1-4625-4a9d-8b56-003c8b9a84d8",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [352, 336]
+    },
+    {
+      "parameters": {
+        "resource": "calendar",
+        "calendar": {
+          "__rl": true,
+          "value": "your-calendar-email@gmail.com",
+          "mode": "id"
+        },
+        "timeMin": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('timeMin', 'Start of the time range to check, ISO 8601 format') }}",
+        "timeMax": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('timeMax', 'End of the time range to check, ISO 8601 format') }}",
+        "options": {
+          "outputFormat": "availability"
+        }
+      },
+      "id": "9f199b0f-e25f-4fbc-aa81-bb75598cb03f",
+      "name": "Calendar: Check Availability",
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [480, 336],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "your-calendar-email@gmail.com",
+          "mode": "id"
+        },
+        "start": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Start', `Appointment start date and time in Bangladesh local time (Asia/Dhaka).\nUse ISO 8601 format with the +06:00 timezone offset.\nExample: 2026-09-08T15:00:00+06:00\nDo not convert the requested Bangladesh local time to UTC.`, 'string') }}",
+        "end": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('end', 'Appointment end time, ISO 8601 format') }}",
+        "additionalFields": {
+          "attendees": [
+            "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('attendeeEmail', 'Email address of the customer, if provided') }}"
+          ],
+          "description": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('description', 'Details about the appointment, including the caller name and reason') }}",
+          "sendUpdates": "all",
+          "summary": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('summary', 'Short title for the appointment') }}"
+        }
+      },
+      "id": "5675d6ba-4165-4585-9f24-1f275eb150a1",
+      "name": "Calendar: Create Appointment",
+      "type": "n8n-nodes-base.googleCalendarTool",
+      "typeVersion": 1.3,
+      "position": [608, 336],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('To', `The customer's email address.\nUse the exact email address provided by the customer.\nThis must be a valid email address.`, 'string') }}",
+        "subject": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('subject', 'Subject line for the booking confirmation email') }}",
+        "message": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('body', 'HTML body of the confirmation email, including appointment date/time and any relevant details') }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "35c18ca1-f17e-459f-875e-ab79c005a66e",
+      "name": "Gmail Tool: Send Booking Confirmation",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [736, 336],
+      "webhookId": "REPLACE_WITH_YOUR_OWN_WEBHOOK_ID",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "REPLACE_WITH_YOUR_GOOGLE_SHEET_ID",
+          "mode": "id",
+          "cachedResultName": "Customer Support Voice Agent"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1"
+        },
+        "filtersUI": {
+          "values": [
+            {
+              "lookupColumn": "Topic",
+              "lookupValue": "={{ $fromAI('topic', 'Keyword or topic the customer is asking about, such as Delivery, Refund, or Order') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b944e424-44c9-4021-bb9a-daadc3332d1d",
+      "name": "Knowledgebase Lookup",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [864, 336],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"response\": $json.output } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "7027be7a-b031-44d7-a230-94641c0553af",
+      "name": "Webhook: Return AI Response (ElevenLabs)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [1072, 112]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-oss-20b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [224, 336],
+      "id": "97420ef9-488a-49c7-99bc-29dde57b55a4",
+      "name": "Groq Chat Model",
+      "credentials": {
+        "groqApi": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Groq account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook: Receive User Request (ElevenLabs)": {
+      "main": [
+        [{ "node": "AI Agent", "type": "main", "index": 0 }]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [{ "node": "Webhook: Return AI Response (ElevenLabs)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]
+      ]
+    },
+    "Calendar: Check Availability": {
+      "ai_tool": [
+        [{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Calendar: Create Appointment": {
+      "ai_tool": [
+        [{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Gmail Tool: Send Booking Confirmation": {
+      "ai_tool": [
+        [{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Knowledgebase Lookup": {
+      "ai_tool": [
+        [{ "node": "AI Agent", "type": "ai_tool", "index": 0 }]
+      ]
+    },
+    "Groq Chat Model": {
+      "ai_languageModel": [
+        [{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": ["ai-agent", "n8n", "elevenlabs", "voice-agent", "customer-support"]
+}
